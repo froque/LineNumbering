@@ -4,7 +4,7 @@ Option Explicit
 Private Declare Function GetShortPathName Lib "kernel32" Alias _
 "GetShortPathNameA" (ByVal lpszLongPath As String, ByVal lpszShortPath As String, ByVal cchBuffer As Long) As Long
 
-Public Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/C[directory]] [/W] [/Lincrement]" & vbCr & vbCr _
+Private Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/C[directory]] [/W] [/Lincrement]" & vbCr & vbCr _
                             & "/P - " & vbTab & " Project to generate line numbers" & vbCr _
                             & "/O - " & vbTab & " Output directory for new source code (default of \LN)" & vbCr _
                             & "/C - " & vbTab & " Compile the project with line numbers and place out in specified directory" & vbCr _
@@ -13,72 +13,66 @@ Public Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/C[di
                             & "/M - " & vbTab & " Maintain the same Path32 (build path) in the new line numbered project " & vbCr _
                             & "/I - " & vbTab & " Line increment to use (default of 1)" & vbCr _
                             & "/VMajor.Minor.Revision(y/n) - " & vbTab & " New version number (auto increment)" & vbCr _
-                            & "/D - " & vbTab & " Display options dialog on launch" & vbCr _
                             & "/? - " & vbTab & " Display this help text"
 
 Private Declare Sub ExitProcess Lib "kernel32" (ByVal uExitCode As Long)
 
-Public gsProject           As String
-Public gsCompileDir        As String
-Public gsOutputDir         As String
-Public gbUseOutputDir      As Boolean
-Public gbClearOutputDir    As Boolean
-Public gbCompileProject    As Boolean
-Public glIncrement         As Long
-Public gbMaintainPaths     As Boolean
-Public gsOriginalOutDir    As String
-Public gbChangeVersion     As Boolean
-Public gsMajor             As String
-Public gsMinor             As String
-Public gsRevision          As String
-Public gbAutoIncrement     As Boolean
-Public gsConditionalArgs   As String
+Private gsProject           As String
+Private gsCompileDir        As String
+Private gsOutputDir         As String
+Private gbClearOutputDir    As Boolean
+Private gbCompileProject    As Boolean
+Private glIncrement         As Long
+Private gbMaintainPaths     As Boolean
+Private gsOriginalOutDir    As String
+Private gbChangeVersion     As Boolean
+Private gsMajor             As String
+Private gsMinor             As String
+Private gsRevision          As String
+Private gbAutoIncrement     As Boolean
+Private gsConditionalArgs   As String
 
-Public Const LINE_NUMBER_LENGTH = 6 'MAX 6 Characters (allows 999,999 lines!)
-Public Const LINE_CONTINUATION = "_"
-Public Const GSSQ       As String = """"
+Private Const LINE_CONTINUATION = "_"
+Private Const GSSQ       As String = """"
 
-Public Const END_SUB = "End Sub"
-Public Const END_FUNCTION = "End Function"
-Public Const END_PROPERTY = "End Property"
+Private Const END_SUB = "End Sub"
+Private Const END_FUNCTION = "End Function"
+Private Const END_PROPERTY = "End Property"
 
-Public Const SUB_LINE = "Sub "
-Public Const PUBLIC_SUB = "Public Sub "
-Public Const PRIVATE_SUB = "Private Sub "
-Public Const FRIEND_SUB = "Friend Sub "
+Private Const SUB_LINE = "Sub "
+Private Const PUBLIC_SUB = "Public Sub "
+Private Const Private_SUB = "Private Sub "
+Private Const FRIEND_SUB = "Friend Sub "
 
-Public Const FUNCTION_LINE = "Function "
-Public Const PUBLIC_FUNCTION = "Public Function "
-Public Const PRIVATE_FUNCTION = "Private Function "
-Public Const FRIEND_FUNCTION = "Friend Function "
+Private Const FUNCTION_LINE = "Function "
+Private Const PUBLIC_FUNCTION = "Public Function "
+Private Const PRIVATE_FUNCTION = "Private Function "
+Private Const FRIEND_FUNCTION = "Friend Function "
 
-Public Const PROPERTY_LINE = "Property "
-Public Const PUBLIC_PROPERTY = "Public Property "
-Public Const PRIVATE_PROPERTY = "Private Property "
-Public Const FRIEND_PROPERTY = "Friend Property "
+Private Const PROPERTY_LINE = "Property "
+Private Const PUBLIC_PROPERTY = "Public Property "
+Private Const PRIVATE_PROPERTY = "Private Property "
+Private Const FRIEND_PROPERTY = "Friend Property "
 
-Public Const MODULE_LINE = "Module="
-Public Const CLASS_LINE = "Class="
-Public Const USERCONTROL_LINE = "UserControl="
-Public Const FORM_LINE = "Form="
-Public Const RELATEDDOC_LINE = "RelatedDoc="
-Public Const RESFILE_LINE = "ResFile32="
-Public Const COMPATIBLEEXE32_LINE = "CompatibleEXE32="
-Public Const PATH32_LINE = "Path32="
-Public Const MAJORVER_LINE = "MajorVer="
-Public Const MINORVER_LINE = "MinorVer="
-Public Const REVISIONVER_LINE = "RevisionVer="
-Public Const AUTOINCREMENTVER_LINE = "AutoIncrementVer="
+Private Const MODULE_LINE = "Module="
+Private Const CLASS_LINE = "Class="
+Private Const USERCONTROL_LINE = "UserControl="
+Private Const FORM_LINE = "Form="
+Private Const RELATEDDOC_LINE = "RelatedDoc="
+Private Const RESFILE_LINE = "ResFile32="
+Private Const COMPATIBLEEXE32_LINE = "CompatibleEXE32="
+Private Const PATH32_LINE = "Path32="
+Private Const MAJORVER_LINE = "MajorVer="
+Private Const MINORVER_LINE = "MinorVer="
+Private Const REVISIONVER_LINE = "RevisionVer="
+Private Const AUTOINCREMENTVER_LINE = "AutoIncrementVer="
 
-Public Const CASE_STATEMENT = "Case"
-Public Const SELECTCASE_STATEMENT = "Select Case"
-Public Const ENDSELECT_STATEMENT = "End Select"
-Public Const CONDITIONAL_STATEMENT = "#"
-Public Const COMMENT_STATEMENT = "'"
-Public Const DIM_STATEMENT = "Dim"
-Public Const STATIC_STATEMENT = "Static"
-Public Const REM_STATEMENT = "Rem"
-
+Private Const CASE_STATEMENT = "Case"
+Private Const SELECTCASE_STATEMENT = "Select Case"
+Private Const ENDSELECT_STATEMENT = "End Select"
+Private Const CONDITIONAL_STATEMENT = "#"
+Private Const COMMENT_STATEMENT = "'"
+Private Const REM_STATEMENT = "Rem"
 
 Public Sub Main()
     On Error GoTo errTrap
@@ -88,10 +82,6 @@ Public Sub Main()
     gsOutputDir = "\LN"
     glIncrement = 1
     gbClearOutputDir = False
-    
-    #If FRED = 1 Then
-        MsgBox "FRED"
-    #End If
     
     Dim bCancel As Boolean
     If fnbParseCommandLine(bCancel) = False Then
@@ -200,7 +190,6 @@ Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
     Dim sCmd    As String
     Dim sValue  As String
     Dim bShowHelp As Boolean
-    Dim bShowDialog As Boolean
     
     sCmds = Command$
     
@@ -267,8 +256,6 @@ Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
                     bShowHelp = True
                 Case "H"
                     If UCase$(sValue) = "ELP" Then bShowHelp = True
-                Case "D"
-                    bShowDialog = True
                 Case "V"
                     If Len(sValue) > 0 Then
                         Dim sValueArr() As String
@@ -295,13 +282,6 @@ Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
       fnbParseCommandLine = True
     End If
     
-    If bShowDialog Then
-        Dim oOptions As frmOptions
-        Set oOptions = New frmOptions
-        Cancel = Not oOptions.ShowDialog
-        Set oOptions = Nothing
-    End If
-    
     Exit Function
     
 errTrap:
@@ -309,7 +289,7 @@ errTrap:
 
 End Function
 
-Public Function fnbCompileProject(ByRef sOldProjectDir As String, ByRef sNewProjectDir As String, ByRef sProjectFile As String) As Boolean
+Private Function fnbCompileProject(ByRef sOldProjectDir As String, ByRef sNewProjectDir As String, ByRef sProjectFile As String) As Boolean
     On Error GoTo errTrap
     
     Dim sCmd As String
@@ -411,7 +391,7 @@ errTrap:
     MsgBox "fnbCompileProject Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 
 End Function
-Public Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir As String) As Boolean
+Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir As String) As Boolean
     On Error GoTo errTrap
 
     Dim iInputFileNumber As Integer
@@ -434,7 +414,6 @@ Public Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir A
     Dim bCheckCTX As Boolean
     Dim bAutoInc As Boolean
     Dim sTemp As String
-    Dim lRevision As Long
     
     GetProjectFileNameAndDir sProject, sProjectFileName, sProjectDir
         
@@ -682,7 +661,7 @@ Private Sub GetProjectFileNameAndDir(sProject As String, sProjectFileName As Str
     
 End Sub
 
-Public Function AddLineNumbers(ByRef sFile As String, ByRef sOutputDir As String) As Boolean
+Private Function AddLineNumbers(ByRef sFile As String, ByRef sOutputDir As String) As Boolean
     On Error GoTo errTrap
     
     Dim sFileDir As String
@@ -700,7 +679,6 @@ Public Function AddLineNumbers(ByRef sFile As String, ByRef sOutputDir As String
     Dim sLineNumberStr As String * 8  'MAX 5 Characters (allows 99,999,999 lines per module!)
     Dim sFirstToken As String
     Dim bFoundNumbers As Boolean
-    Dim sOriginalPath As String
     
     'Retrieve the File Name
     
@@ -818,7 +796,7 @@ Public Function AddLineNumbers(ByRef sFile As String, ByRef sOutputDir As String
             'Are we entering a procedure?
             Else
                 If InStr(1, sTrimmedLine, SUB_LINE) = 1 Or InStr(1, sTrimmedLine, PUBLIC_SUB) = 1 _
-                        Or InStr(1, sTrimmedLine, PRIVATE_SUB) = 1 Or InStr(1, sTrimmedLine, FRIEND_SUB) = 1 _
+                        Or InStr(1, sTrimmedLine, Private_SUB) = 1 Or InStr(1, sTrimmedLine, FRIEND_SUB) = 1 _
                         Or InStr(1, sTrimmedLine, FUNCTION_LINE) = 1 Or InStr(1, sTrimmedLine, PUBLIC_FUNCTION) = 1 _
                         Or InStr(1, sTrimmedLine, PRIVATE_FUNCTION) = 1 Or InStr(1, sTrimmedLine, FRIEND_FUNCTION) = 1 _
                         Or InStr(1, sTrimmedLine, PROPERTY_LINE) = 1 Or InStr(1, sTrimmedLine, PUBLIC_PROPERTY) = 1 _
@@ -972,7 +950,7 @@ errTrap:
     MsgBox "fnbMoveDirectoryFiles Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 End Function
 
-Public Sub ExitWithErrorLevel(ByVal lExitCode As Long)
+Private Sub ExitWithErrorLevel(ByVal lExitCode As Long)
     ' Call ExitProcess as the last action before closing
     ' otherwise it prevents proper clean up
     If Not InIDE Then
@@ -980,7 +958,7 @@ Public Sub ExitWithErrorLevel(ByVal lExitCode As Long)
     End If
 End Sub
 
-Public Function GetLongFilename(ByRef sShortName As String) As String
+Private Function GetLongFilename(ByRef sShortName As String) As String
    
     Dim sArr()      As String
     sArr = Split(sShortName, "\")
@@ -1055,7 +1033,7 @@ Private Function GetShortFileName(ByRef LongPathName As String)
 End Function
 
 
-Public Function fnbCorrectPath32InProjectFile(ByRef sProjectFileName As String, ByRef sProjectDir As String, ByRef sOutputDir As String) As Boolean
+Private Function fnbCorrectPath32InProjectFile(ByRef sProjectFileName As String, ByRef sProjectDir As String, ByRef sOutputDir As String) As Boolean
     On Error GoTo errTrap
 
     Dim iInputFileNumber As Integer
