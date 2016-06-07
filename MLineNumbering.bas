@@ -4,12 +4,10 @@ Option Explicit
 Private Declare Function GetShortPathName Lib "kernel32" Alias _
 "GetShortPathNameA" (ByVal lpszLongPath As String, ByVal lpszShortPath As String, ByVal cchBuffer As Long) As Long
 
-Private Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/C[directory]] [/W] [/Lincrement]" & vbCr & vbCr _
+Private Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/W] [/Lincrement]" & vbCr & vbCr _
                             & "/P - " & vbTab & " Project to generate line numbers" & vbCr _
                             & "/O - " & vbTab & " Output directory for new source code (default of \LN)" & vbCr _
-                            & "/C - " & vbTab & " Compile the project with line numbers and place out in specified directory" & vbCr _
                             & "/W - " & vbTab & " Wipe the Output directory before starting" & vbCr _
-                            & "/T - " & vbTab & " Conditional Compilation Arguments" & vbCr _
                             & "/M - " & vbTab & " Maintain the same Path32 (build path) in the new line numbered project " & vbCr _
                             & "/I - " & vbTab & " Line increment to use (default of 1)" & vbCr _
                             & "/VMajor.Minor.Revision(y/n) - " & vbTab & " New version number (auto increment)" & vbCr _
@@ -18,10 +16,8 @@ Private Const csEXEHELPTEXT As String = "Usage: LNT /Pproject /Odirectory  [/C[d
 Private Declare Sub ExitProcess Lib "kernel32" (ByVal uExitCode As Long)
 
 Private gsProject           As String
-Private gsCompileDir        As String
 Private gsOutputDir         As String
 Private gbClearOutputDir    As Boolean
-Private gbCompileProject    As Boolean
 Private glIncrement         As Long
 Private gbMaintainPaths     As Boolean
 Private gsOriginalOutDir    As String
@@ -30,10 +26,8 @@ Private gsMajor             As String
 Private gsMinor             As String
 Private gsRevision          As String
 Private gbAutoIncrement     As Boolean
-Private gsConditionalArgs   As String
 
 Private Const LINE_CONTINUATION = "_"
-Private Const GSSQ       As String = """"
 
 Private Const END_SUB = "End Sub"
 Private Const END_FUNCTION = "End Function"
@@ -57,6 +51,7 @@ Private Const FRIEND_PROPERTY = "Friend Property "
 Private Const MODULE_LINE = "Module="
 Private Const CLASS_LINE = "Class="
 Private Const USERCONTROL_LINE = "UserControl="
+Private Const DESIGNER_LINE = "Designer="
 Private Const FORM_LINE = "Form="
 Private Const RELATEDDOC_LINE = "RelatedDoc="
 Private Const RESFILE_LINE = "ResFile32="
@@ -83,13 +78,9 @@ Public Sub Main()
     glIncrement = 1
     gbClearOutputDir = False
     
-    Dim bCancel As Boolean
-    If fnbParseCommandLine(bCancel) = False Then
+    If fnbParseCommandLine() = False Then
         MsgBox App.Title & vbCr & vbCr & csEXEHELPTEXT, vbInformation, App.Title & " Help"
         Call ExitWithErrorLevel(1)
-        Exit Sub
-    ElseIf bCancel = True Then
-        Call ExitWithErrorLevel(0)
         Exit Sub
     End If
     
@@ -124,22 +115,14 @@ Public Sub Main()
         MkDir gsOutputDir
     End If
                      
-    If fnbParseProjectFile(gsProject, gsOutputDir) = True Then
-        If gbCompileProject Then
-            If fnbCompileProject(sProjectDir, gsOutputDir, sProjectFileName) Then
-            Else
-                Call ExitWithErrorLevel(1)
-                Exit Sub
-            End If
-        End If
-    Else
+    If Not fnbParseProjectFile(gsProject, gsOutputDir) = True Then
         Call ExitWithErrorLevel(1)
         Exit Sub
     End If
     
    
     'Exit with success
-    MsgBox "Completed Successfully.", vbInformation, "Line Numbering Tool"
+    Debug.Print "Completed Successfully."
     Call ExitWithErrorLevel(0)
     Exit Sub
     
@@ -180,7 +163,7 @@ Private Sub ClearDirectory(ByRef sPath As String)
 errTrap:
 200       MsgBox "ClearDirectory Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 End Sub
-Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
+Private Function fnbParseCommandLine() As Boolean
     On Error GoTo errTrap
     
     'Parse the Command Line
@@ -191,16 +174,7 @@ Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
     Dim sValue  As String
     Dim bShowHelp As Boolean
     
-    sCmds = Command$
-    
-    If Len(sCmds) = 0 And InIDE Then
-        sCmds = "/PLineNumbering.vbp " '/C"
-    End If
-    
-    'sCmds = Replace(sCmds, "-", "/", 1, 1)  'Replace a leading "-" if necessary
-    'sCmds = Replace(sCmds, " -", " /") 'Replace all remaining "-"s with "/"
-    sCmds = " " & sCmds
-    
+    sCmds = " " & Command$
     vCmds = Split(sCmds, " /")
 
     For Each v In vCmds
@@ -234,16 +208,6 @@ Private Function fnbParseCommandLine(ByRef Cancel As Boolean) As Boolean
                         End If
                         gsOutputDir = sValue
                     End If
-                Case "C" 'Compile directory
-                    gbCompileProject = True
-                    If Len(sValue) > 0 Then
-                        If Left$(sValue, 1) = """" And Right$(sValue, 1) = """" Then
-                            sValue = Mid$(sValue, 2, Len(sValue) - 2)
-                        End If
-                        gsCompileDir = sValue
-                    End If
-                Case "T" 'Conditional Compilation
-                    gsConditionalArgs = sValue
                 Case "W" 'Wipe the output directory
                     gbClearOutputDir = True
                 Case "M" 'Maintain build path
@@ -289,108 +253,7 @@ errTrap:
 
 End Function
 
-Private Function fnbCompileProject(ByRef sOldProjectDir As String, ByRef sNewProjectDir As String, ByRef sProjectFile As String) As Boolean
-    On Error GoTo errTrap
-    
-    Dim sCmd As String
-    Dim sTempDir As String
-    Dim lCount As Long
-    Dim sProject As String
-    Dim iFileNumber As Integer
-    Dim sFile As String
-    
-    Const VBEXE As String = "C:\Program Files\Microsoft Visual Studio\VB98\VB6.EXE"
-    
-    If Dir(VBEXE) = "" Then
-      MsgBox "Unable to compile, can not find VB program" & vbCr & vbCr & VBEXE, vbCritical
-      Exit Function
-    End If
-    
-    lCount = 0
-    sTempDir = sOldProjectDir & "\Temp"
-    
-    Do While Len(Dir(sTempDir, vbDirectory)) > 0
-        lCount = lCount + 1
-        sTempDir = sOldProjectDir & "\Temp" & lCount
-    Loop
-    
-    'Now we have a temporary sub directory
-    If fnbMoveDirectoryFiles(sOldProjectDir, sTempDir) = False Then
-        MsgBox "The moving of the project to a temporary directory failed.  Please check the status of the project, as it may be missing files", vbCritical
-        Exit Function
-    End If
-    
-    'Now lets move the line numbered source into the original directory
-    If fnbMoveDirectoryFiles(sNewProjectDir, sOldProjectDir) = False Then
-        MsgBox "The moving of the line numbered project to the original directory failed.  Please check the status of the project, as it may be missing files", vbCritical
-        Exit Function
-    End If
-    
-    'Build the Command line to execute to build the project
-    sProject = sOldProjectDir & "\" & sProjectFile
-    
-    sCmd = GSSQ & VBEXE & GSSQ & " /m " & GSSQ & sProject & GSSQ & " /out " & GSSQ & sOldProjectDir & "\Build.Log" & GSSQ
-    
-    If Len(gsCompileDir) > 0 Then
-        If Len(Dir(gsCompileDir, vbDirectory)) = 0 Then
-            MkDir gsCompileDir
-        End If
-        sCmd = sCmd & " /outdir " & GSSQ & gsCompileDir & GSSQ
-    End If
-    
-    'sCmd = sCmd & " /d   " 'Remove the conditional compilation constants
-    sCmd = sCmd & " /d" & gsConditionalArgs
-    
-    'Remove the old log file (if it exists)
-    KillFile sOldProjectDir & "\Build.Log"
-    
-    'Now do the compile
-    ShellAndWaitToFinish sCmd
-    
-    'Update Path32 in line numbered project
-    If gbMaintainPaths Then
-        fnbCorrectPath32InProjectFile sProjectFile, sOldProjectDir, sNewProjectDir
-    End If
-    
-    'Now move everything back to where it should be...
-    If fnbMoveDirectoryFiles(sOldProjectDir, sNewProjectDir) = False Then
-        MsgBox "The moving of the compiled line numbered project to the sub directory failed.  Please check the status of the project, as it may be missing files", vbCritical
-        Exit Function
-    End If
-    
-    If fnbMoveDirectoryFiles(sTempDir, sOldProjectDir) = False Then
-        MsgBox "The moving of the original project to the original directory failed.  Please check the status of the project, as it may be missing files", vbCritical
-        Exit Function
-    End If
-        
-    RmDir sTempDir
-    
-    'Log file should have been created
-    If Len(Dir(sNewProjectDir & "\Build.Log")) > 0 Then
-        iFileNumber = FreeFile
-        
-        Open sNewProjectDir & "\Build.Log" For Input As #iFileNumber
-        sFile = Input(LOF(iFileNumber), iFileNumber)
-        Close iFileNumber
-    
-        If InStr(1, sFile, " succeeded.") = 0 Then
-            sFile = "The " & sProjectFile & " project has not been compiled." & vbCr & vbCr _
-                    & Trim$(sFile)
-            
-            Call MsgBox(sFile, vbCritical)
-        
-            Exit Function
-        End If
-    End If
-    
-    fnbCompileProject = True
-    
-    Exit Function
-    
-errTrap:
-    MsgBox "fnbCompileProject Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 
-End Function
 Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir As String) As Boolean
     On Error GoTo errTrap
 
@@ -412,6 +275,7 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
     Dim iFilePos As Integer
     Dim bCheckFRX As Boolean
     Dim bCheckCTX As Boolean
+    Dim bCheckDesigner As Boolean
     Dim bAutoInc As Boolean
     Dim sTemp As String
     
@@ -426,14 +290,6 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
     iInputFileNumber = FreeFile
     Open sProjectDir & "\" & sProjectFileName For Input As iInputFileNumber
         
-    If gbCompileProject Then
-        sOriginalProjectFile = sProjectDir & "\TMP_" & Trim(sProjectFileName)
-        'We need to increment the Revision Number of the original Source
-        KillFile sOriginalProjectFile
-        iOrigOutputFileNumber = FreeFile
-        Open sOriginalProjectFile For Output As iOrigOutputFileNumber
-    End If
-    
     Do Until EOF(iInputFileNumber)
         'Get a line from the file
         Line Input #iInputFileNumber, sOriginalLine
@@ -461,6 +317,10 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
                 bGetFile = True
                 bParseFile = True
                 bCheckCTX = True
+            ElseIf InStr(1, sLine, DESIGNER_LINE) = 1 Then
+                bGetFile = True
+                bParseFile = True
+                bCheckDesigner = True
             ElseIf InStr(1, sLine, FORM_LINE) = 1 Then
                 bGetFile = True
                 bParseFile = True
@@ -596,6 +456,25 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
                                 End If
                             End If
                         End If
+                        
+                        If bCheckDesigner Then
+                            'If the file is a form, check for an FRX
+                            If UCase$(Right$(sFile, 3)) = "DSR" Then
+                                sFile = Left$(sFile, Len(sFile) - 3) & "DCA"
+                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "DCA"
+                                
+                                If Len(Dir(sFile)) > 0 Then
+                                    FileCopy sFile, sOutputDir & "\" & sFileName
+                                End If
+                                
+                                sFile = Left$(sFile, Len(sFile) - 3) & "dsx"
+                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "Dsx"
+                                
+                                If Len(Dir(sFile)) > 0 Then
+                                    FileCopy sFile, sOutputDir & "\" & sFileName
+                                End If
+                            End If
+                        End If
                     
                         If bCheckCTX Then
                             'If the file is a user control, check for an CTX
@@ -617,24 +496,11 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
         'Output the line
         Print #iOutputFileNumber, sOutput
         
-        If gbCompileProject Then
-            Print #iOrigOutputFileNumber, sOriginalLine
-        End If
     Loop
     
     Close iInputFileNumber
     Close iOutputFileNumber
     Close iOrigOutputFileNumber
-
-    If gbCompileProject Then
-        If bAutoInc Or gbChangeVersion Then
-            'We need to replace the original project file with the updated one (with new revision level)
-            If Len(Dir(sOriginalProjectFile)) > 0 And Len(Dir(sProjectDir & "\" & sProjectFileName)) > 0 Then
-                KillFile sProjectDir & "\" & sProjectFileName
-                Name sOriginalProjectFile As sProjectDir & "\" & sProjectFileName
-            End If
-        End If
-    End If
 
     On Error Resume Next
     Kill sOriginalProjectFile
@@ -860,19 +726,6 @@ errTrap:
     MsgBox "AddLineNumbers Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 End Function
 
-'Private Function InIDE() As Boolean
-'    On Error GoTo errTrap
-'
-'    Debug.Print 1 / 0
-'
-'    InIDE = False
-'
-'    Exit Function
-'
-'errTrap:
-'    InIDE = True
-'End Function
-
 Private Function InIDE(Optional Param As Boolean = False) As Boolean
 
     Static Result As Boolean
@@ -882,73 +735,7 @@ Private Function InIDE(Optional Param As Boolean = False) As Boolean
     
 End Function
 
-Private Sub KillFile(sFile As String)
-    If Len(Dir(sFile)) > 0 Then
-        SetAttr sFile, vbNormal
-        Kill sFile
-    End If
-End Sub
-Private Function fnbMoveDirectoryFiles(ByRef sSourceDir As String, ByRef sDestDir As String) As Boolean
-    On Error GoTo errTrap
-    
-    Dim sFile As String
-    Dim lROCount As Long
-    Dim lROIndex As Long
-    Dim sROFiles() As String
-    
-    'check to see if source exists
-    If Len(Dir(sSourceDir, vbDirectory)) = 0 Then
-        MsgBox "Unable to find Directory :" & vbCr & vbCr & sSourceDir, vbCritical
-        Exit Function
-    End If
 
-    'if destination doesn't exist, create it
-    If Len(Dir(sDestDir, vbDirectory)) = 0 Then
-        MkDir sDestDir
-    End If
-
-    lROCount = 0
-    ReDim sROFiles(0 To lROCount)
-    
-    sFile = Dir(sSourceDir & "\*.*")
-    Do While Len(sFile) > 0
-        'Check if read only first
-        If GetAttr(sSourceDir & "\" & sFile) And vbReadOnly Then
-            lROCount = lROCount + 1
-            ReDim Preserve sROFiles(0 To lROCount - 1)
-          
-            'Record which files are read only, so that we can make then read only afterwards...
-            sROFiles(lROCount - 1) = sFile
-        
-            'Make it writable
-            SetAttr sSourceDir & "\" & sFile, vbNormal
-        End If
-        
-        'Rename all the files
-        Name sSourceDir & "\" & sFile As sDestDir & "\" & sFile
-
-    
-        sFile = Dir
-    Loop
-
-    'Check to make sure that the directory is empty (to be sure , to be sure)
-    If Len(Dir(sSourceDir & "\*.*")) > 0 Then
-        MsgBox "Not all files have been moved from the Directory :" & vbCr & vbCr & sSourceDir, vbCritical
-        Exit Function
-    End If
-    
-    'Make those read only files
-    For lROIndex = 0 To lROCount - 1
-      SetAttr sDestDir & "\" & sROFiles(lROIndex), vbReadOnly
-    Next lROIndex
-    
-    fnbMoveDirectoryFiles = True
-    
-    Exit Function
-    
-errTrap:
-    MsgBox "fnbMoveDirectoryFiles Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
-End Function
 
 Private Sub ExitWithErrorLevel(ByVal lExitCode As Long)
     ' Call ExitProcess as the last action before closing
@@ -1033,77 +820,5 @@ Private Function GetShortFileName(ByRef LongPathName As String)
 End Function
 
 
-Private Function fnbCorrectPath32InProjectFile(ByRef sProjectFileName As String, ByRef sProjectDir As String, ByRef sOutputDir As String) As Boolean
-    On Error GoTo errTrap
 
-    Dim iInputFileNumber As Integer
-    Dim iOutputFileNumber As Integer
-    Dim sOriginalLine As String
-    Dim sLine As String
-    Dim sOutput As String
-       
-    'Open a new source file for writing
-    iOutputFileNumber = FreeFile
-        
-    Open sProjectDir & "\NewPath32_" & Trim(sProjectFileName) For Output As iOutputFileNumber
-    
-    'Open the source file for reading
-    iInputFileNumber = FreeFile
-    Open sProjectDir & "\" & sProjectFileName For Input As iInputFileNumber
-            
-    Do Until EOF(iInputFileNumber)
-        'Get a line from the file
-        Line Input #iInputFileNumber, sOriginalLine
-        
-        'Trim any spaces from the beginning
-        sLine = Trim(sOriginalLine)
-        sOutput = sLine
-        
-        'Don't test an empty line
-        If Len(sLine) > 0 Then
-        
-            If InStr(1, sLine, PATH32_LINE) = 1 Then
-                If gbMaintainPaths Then
-                    Dim sSplitPath() As String
-                    sSplitPath = Split(gsOriginalOutDir, "\")
-                    Dim sPrefix As String
-                    Dim iCounter As Integer
-                    For iCounter = 0 To UBound(sSplitPath) - 1
-                        sPrefix = sPrefix & "..\"
-                    Next
-                    Dim iPathPos As Integer
-                    iPathPos = InStr(sLine, "=")
-                    sOutput = PATH32_LINE & Chr(34) & sPrefix & Mid(sLine, iPathPos + 2)
-                End If
-            End If
-        
-        End If
-        
-        'Output the line
-        Print #iOutputFileNumber, sOutput
-        
-        
-    Loop
-    
-    Close iInputFileNumber
-    Close iOutputFileNumber
-    
-    On Error Resume Next
-    Name sProjectDir & "\" & sProjectFileName As sProjectDir & "\OldPath32_" & sProjectFileName
-    Name sProjectDir & "\NewPath32_" & Trim(sProjectFileName) As sProjectDir & "\" & sProjectFileName
-    If Err.Number = 0 Then
-        Kill sProjectDir & "\OldPath32_" & sProjectFileName
-    Else
-        Name sProjectDir & "\OldPath32_" & sProjectFileName As sProjectDir & "\" & sProjectFileName
-        Kill sProjectDir & "\NewPath32_" & sProjectFileName
-        MsgBox "Could not update PATH32 in line numbered project file", vbExclamation
-    End If
-    
-    fnbCorrectPath32InProjectFile = True
-    
-    Exit Function
-    
-errTrap:
-    MsgBox "fnbCorrectPath32InProjectFile Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
-End Function
 
