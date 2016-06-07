@@ -1,0 +1,10 @@
+REGEDIT4
+
+[HKEY_CLASSES_ROOT\.vbp]
+@="VisualBasic.Project"
+
+[HKEY_CLASSES_ROOT\VisualBasic.Project\Shell\Line Number VB Project]
+
+[HKEY_CLASSES_ROOT\VisualBasic.Project\Shell\Line Number VB Project\command]
+@="C:\\Program Files\\Line Numbering\\linenumbering.exe /P%1 /C /W /I10 /D /M /OLine Numbered"
+
