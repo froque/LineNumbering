@@ -261,23 +261,12 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
     Dim iOutputFileNumber As Integer
     Dim iOrigOutputFileNumber As Integer
     Dim sOriginalLine As String
-    Dim sLine As String
     Dim sOutput As String
     Dim sProjectDir As String
     Dim sProjectFileName As String
     Dim sOriginalProjectFile As String
-    Dim bGetFile As Boolean
-    Dim bCopyFile As Boolean
-    Dim bParseFile As Boolean
-    Dim bCopyRenameFile As Boolean
-    Dim sFile As String
     Dim sFileName As String
     Dim iFilePos As Integer
-    Dim bCheckFRX As Boolean
-    Dim bCheckCTX As Boolean
-    Dim bCheckDesigner As Boolean
-    Dim bAutoInc As Boolean
-    Dim sTemp As String
     
     GetProjectFileNameAndDir sProject, sProjectFileName, sProjectDir
         
@@ -294,205 +283,8 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
         'Get a line from the file
         Line Input #iInputFileNumber, sOriginalLine
         
-        'Trim any spaces from the beginning
-        sLine = Trim(sOriginalLine)
-        sOutput = sLine
-        
-        'Don't test an empty line
-        If Len(sLine) > 0 Then
-        
-            bGetFile = False                'We need to process the file
-            bParseFile = False              'We need to add line numbers
-            bCopyFile = False               'Copy File only
-            bCopyRenameFile = False         'Copy and rename (used for compatible)
-            bCheckFRX = False
-            bCheckCTX = False
-            
-            'Check for Forms,Modules,UserControls or Classes
-            If InStr(1, sLine, MODULE_LINE) = 1 Or _
-                    InStr(1, sLine, CLASS_LINE) = 1 Then
-                bGetFile = True
-                bParseFile = True
-            ElseIf InStr(1, sLine, USERCONTROL_LINE) = 1 Then
-                bGetFile = True
-                bParseFile = True
-                bCheckCTX = True
-            ElseIf InStr(1, sLine, DESIGNER_LINE) = 1 Then
-                bGetFile = True
-                bParseFile = True
-                bCheckDesigner = True
-            ElseIf InStr(1, sLine, FORM_LINE) = 1 Then
-                bGetFile = True
-                bParseFile = True
-                bCheckFRX = True
-            'Now check for Related Documents and Resource File
-            ElseIf InStr(1, sLine, RELATEDDOC_LINE) = 1 Or _
-                    InStr(1, sLine, RESFILE_LINE) = 1 Then
-                bGetFile = True
-                bCopyFile = True
-            'Now adjust the CompatibleExe if required...
-            ElseIf InStr(1, sLine, COMPATIBLEEXE32_LINE) = 1 Then
-                bGetFile = True
-                bCopyRenameFile = True
-            ElseIf InStr(1, sLine, PATH32_LINE) = 1 Then
-                sOutput = PATH32_LINE & Chr$(34) & Chr$(34)
-                If gbMaintainPaths Then
-                    sOutput = sLine
-                End If
-            ElseIf InStr(1, sLine, MAJORVER_LINE) = 1 Then
-                iFilePos = InStr(1, sLine, "=")
-                If gbChangeVersion Then
-                    sOriginalLine = MAJORVER_LINE & gsMajor
-                    sOutput = MAJORVER_LINE & gsMajor
-                End If
-            ElseIf InStr(1, sLine, MINORVER_LINE) = 1 Then
-                iFilePos = InStr(1, sLine, "=")
-                If gbChangeVersion Then
-                    sOriginalLine = MINORVER_LINE & gsMinor
-                    sOutput = MINORVER_LINE & gsMinor
-                End If
-            ElseIf InStr(1, sLine, REVISIONVER_LINE) = 1 Then
-                iFilePos = InStr(1, sLine, "=")
-                If gbChangeVersion Then
-                    If gbAutoIncrement Then
-                        sOriginalLine = REVISIONVER_LINE & (Val(gsRevision) + 1)
-                    Else
-                        sOriginalLine = REVISIONVER_LINE & gsRevision
-                    End If
-                    sOutput = REVISIONVER_LINE & gsRevision
-                Else
-                    sTemp = Trim$(Mid$(sLine, iFilePos + 1))
-                    If IsNumeric(sTemp) Then
-                        sOriginalLine = REVISIONVER_LINE & CStr(Val(sTemp) + 1)
-                    End If
-                End If
-            ElseIf InStr(1, sLine, AUTOINCREMENTVER_LINE) = 1 Then
-                If gbChangeVersion Then
-                    sOutput = AUTOINCREMENTVER_LINE & IIf(gbAutoIncrement, "1", "0")
-                    sOriginalLine = AUTOINCREMENTVER_LINE & IIf(gbAutoIncrement, "1", "0")
-                Else
-                    iFilePos = InStr(1, sLine, "=")
-                    sTemp = Trim$(Mid$(sLine, iFilePos + 1))
-                    If IsNumeric(sTemp) Then
-                        If Val(sTemp) = 1 Then bAutoInc = True
-                    End If
-                End If
-                
-            End If
-                            
-            If bGetFile Then
-               
-                'Is the line of the format (Module=SrchGlobals; SrchGlobals.bas)
-                iFilePos = InStr(1, sLine, "; ")
-                If iFilePos <= 0 Then
-                    'Is the line of the format (Form=SummaryFrm.frm)
-                    iFilePos = InStr(1, sLine, "=")
-                    If iFilePos >= 0 Then
-                        'Step past the "="
-                        iFilePos = iFilePos + 1
-                    End If
-                Else
-                    'Step past the "; "
-                    iFilePos = iFilePos + 2
-                End If
-               
-                'After all that did we get a file name?
-                If iFilePos > 0 Then
-                    sFile = Mid(sLine, iFilePos)
-                    
-                    'Trim the quotes from either side, if they exist.
-                    If Left$(sFile, 1) = """" And Right$(sFile, 1) = """" Then
-                        sFile = Mid$(sFile, 2, Len(sFile) - 2)
-                    End If
-                    
-                    
-                    'Get just the File Name
-                    If InStr(sFile, "\") > 0 Then
-                        sFileName = Right$(sFile, Len(sFile) - InStrRev(sFile, "\"))
-                        sFile = sProjectDir & "\" & sFile
-                    Else
-                        sFileName = sFile
-                        sFile = sProjectDir & "\" & sFileName
-                    End If
-                    
-                    sOutput = Left(sLine, iFilePos - 1) & sFileName
-                    If Len(sFile) Then
-                        If bParseFile Then
-                            'For code add the numbers
-                            If AddLineNumbers(sFile, sOutputDir) = False Then
-                                MsgBox "Unable to add line numbers to File :" & vbCr & vbCr & sFile, vbCritical
-                                Exit Function
-                            End If
-                        ElseIf bCopyFile Then
-                            'Just copt the file over
-                            If Dir(sFile) = "" Then
-                                MsgBox "Unable to find File :" & vbCr & vbCr & sFile, vbCritical
-                                Exit Function
-                            End If
-                            FileCopy sFile, sOutputDir & "\" & sFileName
-                        ElseIf bCopyRenameFile Then
-                            'Copy File over and rename it (to avoid conflicts)
-                            If Left$(sFile, 2) = ".." Then
-                              sFile = sProjectDir & "\" & sFile
-                            End If
-                            
-                            If Dir(sFile) = "" Then
-                                MsgBox "Unable to find File :" & vbCr & vbCr & sFile, vbCritical
-                                Exit Function
-                            End If
-                            
-                            sOutput = Left(sLine, iFilePos - 1) & "CMP_" & sFileName
-                            FileCopy sFile, sOutputDir & "\" & "CMP_" & sFileName
-                        End If
-                        
-                        If bCheckFRX Then
-                            'If the file is a form, check for an FRX
-                            If UCase$(Right$(sFile, 3)) = "FRM" Then
-                                sFile = Left$(sFile, Len(sFile) - 3) & "frx"
-                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "frx"
-                                
-                                If Len(Dir(sFile)) > 0 Then
-                                    FileCopy sFile, sOutputDir & "\" & sFileName
-                                End If
-                            End If
-                        End If
-                        
-                        If bCheckDesigner Then
-                            'If the file is a form, check for an FRX
-                            If UCase$(Right$(sFile, 3)) = "DSR" Then
-                                sFile = Left$(sFile, Len(sFile) - 3) & "DCA"
-                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "DCA"
-                                
-                                If Len(Dir(sFile)) > 0 Then
-                                    FileCopy sFile, sOutputDir & "\" & sFileName
-                                End If
-                                
-                                sFile = Left$(sFile, Len(sFile) - 3) & "dsx"
-                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "Dsx"
-                                
-                                If Len(Dir(sFile)) > 0 Then
-                                    FileCopy sFile, sOutputDir & "\" & sFileName
-                                End If
-                            End If
-                        End If
-                    
-                        If bCheckCTX Then
-                            'If the file is a user control, check for an CTX
-                            If UCase$(Right$(sFile, 3)) = "CTL" Then
-                                sFile = Left$(sFile, Len(sFile) - 3) & "ctx"
-                                sFileName = Left$(sFileName, Len(sFileName) - 3) & "ctx"
-                                
-                                If Len(Dir(sFile)) > 0 Then
-                                    FileCopy sFile, sOutputDir & "\" & sFileName
-                                End If
-                            End If
-                        End If
-                    End If
-                
-                End If
-            End If
-        End If
-        
+        sOutput = processProjectLine(sProjectDir, sOutputDir, sOriginalLine, iFilePos)
+
         'Output the line
         Print #iOutputFileNumber, sOutput
         
@@ -512,6 +304,227 @@ Private Function fnbParseProjectFile(ByRef sProject As String, ByRef sOutputDir 
 errTrap:
     MsgBox "fnbParseProjectFile Error: " & Err.Description & IIf(Erl, ", Line:" & Erl, "")
 End Function
+
+Private Function processProjectLine(ByVal sProjectDir As String, ByVal sOutputDir As String, ByVal sOriginalLine As String, ByVal iFilePos As Integer) As String
+    Dim sLine As String
+    Dim sOutput As String
+    Dim bGetFile As Boolean
+    Dim bCopyFile As Boolean
+    Dim bParseFile As Boolean
+    Dim bCopyRenameFile As Boolean
+    Dim sFile As String
+    Dim sFileName As String
+    Dim bCheckFRX As Boolean
+    Dim bCheckCTX As Boolean
+    Dim bCheckDesigner As Boolean
+    Dim bAutoInc As Boolean
+    Dim sTemp As String
+    
+    bGetFile = False                'We need to process the file
+    bParseFile = False              'We need to add line numbers
+    bCopyFile = False               'Copy File only
+    bCopyRenameFile = False         'Copy and rename (used for compatible)
+    bCheckFRX = False
+    bCheckCTX = False
+    bCheckDesigner = False
+    
+    'Trim any spaces from the beginning
+    sLine = Trim(sOriginalLine)
+    sOutput = sLine
+    
+    'Don't test an empty line
+    If Len(sLine) = 0 Then
+        processProjectLine = ""
+        Exit Function
+    End If
+        
+    'Check for Forms,Modules,UserControls or Classes
+    If InStr(1, sLine, MODULE_LINE) = 1 Or _
+            InStr(1, sLine, CLASS_LINE) = 1 Then
+        bGetFile = True
+        bParseFile = True
+    ElseIf InStr(1, sLine, USERCONTROL_LINE) = 1 Then
+        bGetFile = True
+        bParseFile = True
+        bCheckCTX = True
+    ElseIf InStr(1, sLine, DESIGNER_LINE) = 1 Then
+        bGetFile = True
+        bParseFile = True
+        bCheckDesigner = True
+    ElseIf InStr(1, sLine, FORM_LINE) = 1 Then
+        bGetFile = True
+        bParseFile = True
+        bCheckFRX = True
+    'Now check for Related Documents and Resource File
+    ElseIf InStr(1, sLine, RELATEDDOC_LINE) = 1 Or _
+            InStr(1, sLine, RESFILE_LINE) = 1 Then
+        bGetFile = True
+        bCopyFile = True
+    'Now adjust the CompatibleExe if required...
+    ElseIf InStr(1, sLine, COMPATIBLEEXE32_LINE) = 1 Then
+        bGetFile = True
+        bCopyRenameFile = True
+    ElseIf InStr(1, sLine, PATH32_LINE) = 1 Then
+        sOutput = PATH32_LINE & Chr$(34) & Chr$(34)
+        If gbMaintainPaths Then
+            sOutput = sLine
+        End If
+    ElseIf InStr(1, sLine, MAJORVER_LINE) = 1 Then
+        iFilePos = InStr(1, sLine, "=")
+        If gbChangeVersion Then
+            sOriginalLine = MAJORVER_LINE & gsMajor
+            sOutput = MAJORVER_LINE & gsMajor
+        End If
+    ElseIf InStr(1, sLine, MINORVER_LINE) = 1 Then
+        iFilePos = InStr(1, sLine, "=")
+        If gbChangeVersion Then
+            sOriginalLine = MINORVER_LINE & gsMinor
+            sOutput = MINORVER_LINE & gsMinor
+        End If
+    ElseIf InStr(1, sLine, REVISIONVER_LINE) = 1 Then
+        iFilePos = InStr(1, sLine, "=")
+        If gbChangeVersion Then
+            If gbAutoIncrement Then
+                sOriginalLine = REVISIONVER_LINE & (Val(gsRevision) + 1)
+            Else
+                sOriginalLine = REVISIONVER_LINE & gsRevision
+            End If
+            sOutput = REVISIONVER_LINE & gsRevision
+        Else
+            sTemp = Trim$(Mid$(sLine, iFilePos + 1))
+            If IsNumeric(sTemp) Then
+                sOriginalLine = REVISIONVER_LINE & CStr(Val(sTemp) + 1)
+            End If
+        End If
+    ElseIf InStr(1, sLine, AUTOINCREMENTVER_LINE) = 1 Then
+        If gbChangeVersion Then
+            sOutput = AUTOINCREMENTVER_LINE & IIf(gbAutoIncrement, "1", "0")
+            sOriginalLine = AUTOINCREMENTVER_LINE & IIf(gbAutoIncrement, "1", "0")
+        Else
+            iFilePos = InStr(1, sLine, "=")
+            sTemp = Trim$(Mid$(sLine, iFilePos + 1))
+            If IsNumeric(sTemp) Then
+                If Val(sTemp) = 1 Then bAutoInc = True
+            End If
+        End If
+        
+    End If
+                    
+    If bGetFile Then
+       
+        'Is the line of the format (Module=SrchGlobals; SrchGlobals.bas)
+        iFilePos = InStr(1, sLine, "; ")
+        If iFilePos <= 0 Then
+            'Is the line of the format (Form=SummaryFrm.frm)
+            iFilePos = InStr(1, sLine, "=")
+            If iFilePos >= 0 Then
+                'Step past the "="
+                iFilePos = iFilePos + 1
+            End If
+        Else
+            'Step past the "; "
+            iFilePos = iFilePos + 2
+        End If
+    
+        'After all that did we get a file name?
+        If iFilePos > 0 Then
+            sFile = Mid(sLine, iFilePos)
+    
+            'Trim the quotes from either side, if they exist.
+            If Left$(sFile, 1) = """" And Right$(sFile, 1) = """" Then
+                sFile = Mid$(sFile, 2, Len(sFile) - 2)
+            End If
+    
+    
+            'Get just the File Name
+            If InStr(sFile, "\") > 0 Then
+                sFileName = Right$(sFile, Len(sFile) - InStrRev(sFile, "\"))
+                sFile = sProjectDir & "\" & sFile
+            Else
+                sFileName = sFile
+                sFile = sProjectDir & "\" & sFileName
+            End If
+    
+            sOutput = Left(sLine, iFilePos - 1) & sFileName
+            If Len(sFile) Then
+                If bParseFile Then
+                    'For code add the numbers
+                    If AddLineNumbers(sFile, sOutputDir) = False Then
+                        MsgBox "Unable to add line numbers to File :" & vbCr & vbCr & sFile, vbCritical
+                        Exit Function
+                    End If
+                ElseIf bCopyFile Then
+                    'Just copt the file over
+                    If Dir(sFile) = "" Then
+                        MsgBox "Unable to find File :" & vbCr & vbCr & sFile, vbCritical
+                        Exit Function
+                    End If
+                    FileCopy sFile, sOutputDir & "\" & sFileName
+                ElseIf bCopyRenameFile Then
+                    'Copy File over and rename it (to avoid conflicts)
+                    If Left$(sFile, 2) = ".." Then
+                      sFile = sProjectDir & "\" & sFile
+                    End If
+    
+                    If Dir(sFile) = "" Then
+                        MsgBox "Unable to find File :" & vbCr & vbCr & sFile, vbCritical
+                        Exit Function
+                    End If
+    
+                    sOutput = Left(sLine, iFilePos - 1) & "CMP_" & sFileName
+                    FileCopy sFile, sOutputDir & "\" & "CMP_" & sFileName
+                End If
+    
+                If bCheckFRX Then
+                    'If the file is a form, check for an FRX
+                    If UCase$(Right$(sFile, 3)) = "FRM" Then
+                        sFile = Left$(sFile, Len(sFile) - 3) & "frx"
+                        sFileName = Left$(sFileName, Len(sFileName) - 3) & "frx"
+    
+                        If Len(Dir(sFile)) > 0 Then
+                            FileCopy sFile, sOutputDir & "\" & sFileName
+                        End If
+                    End If
+                End If
+    
+                If bCheckDesigner Then
+                    'If the file is a form, check for an FRX
+                    If UCase$(Right$(sFile, 3)) = "DSR" Then
+                        sFile = Left$(sFile, Len(sFile) - 3) & "DCA"
+                        sFileName = Left$(sFileName, Len(sFileName) - 3) & "DCA"
+    
+                        If Len(Dir(sFile)) > 0 Then
+                            FileCopy sFile, sOutputDir & "\" & sFileName
+                        End If
+    
+                        sFile = Left$(sFile, Len(sFile) - 3) & "dsx"
+                        sFileName = Left$(sFileName, Len(sFileName) - 3) & "Dsx"
+    
+                        If Len(Dir(sFile)) > 0 Then
+                            FileCopy sFile, sOutputDir & "\" & sFileName
+                        End If
+                    End If
+                End If
+    
+                If bCheckCTX Then
+                    'If the file is a user control, check for an CTX
+                    If UCase$(Right$(sFile, 3)) = "CTL" Then
+                        sFile = Left$(sFile, Len(sFile) - 3) & "ctx"
+                        sFileName = Left$(sFileName, Len(sFileName) - 3) & "ctx"
+    
+                        If Len(Dir(sFile)) > 0 Then
+                            FileCopy sFile, sOutputDir & "\" & sFileName
+                        End If
+                    End If
+                End If
+            End If
+        
+        End If
+    End If
+
+    processProjectLine = sOutput
+End Function
+
 
 Private Sub GetProjectFileNameAndDir(sProject As String, sProjectFileName As String, _
     sProjectDir As String)
@@ -553,13 +566,6 @@ Private Function AddLineNumbers(ByRef sFile As String, ByRef sOutputDir As Strin
         
     GetProjectFileNameAndDir sFile, sFileName, sFileDir
     
-'    If InStr(sFile, "\") > 0 Then
-'        sFileName = Right$(sFile, Len(sFile) - InStrRev(sFile, "\"))
-'        sFileDir = Left$(sFile, Len(sFile) - Len(sFileName) - 1)
-'    Else
-'        sFileName = sFile
-'        sFileDir = App.Path
-'    End If
     
     'Open a new source file for writing
     iOutputFileNumber = FreeFile
