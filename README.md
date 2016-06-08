@@ -4,7 +4,7 @@ VB6 Line Numbering Build Tool
 # Usage
 ```
 $ bin\LineNumbering.exe
-LineNumbering 9.9.6003.33428
+LineNumbering 1.0.0.0
 
   P, project      Required. Project to generate line numbers
   O, output       (Default: LN) Output directory for new source code

@@ -10,9 +10,9 @@ Imports System.Runtime.InteropServices
 ' TODO: Review the values of the assembly attributes
 
 
-<Assembly: AssemblyTitle("")>
-<Assembly: AssemblyDescription("")>
-<Assembly: AssemblyCompany("www.visualbasicexpert.com")>
+<Assembly: AssemblyTitle("LineNumbering")>
+<Assembly: AssemblyDescription("VB6 Line Numbering Build Tool")>
+<Assembly: AssemblyCompany("www.premium-minds.com")>
 <Assembly: AssemblyProduct("")>
 <Assembly: AssemblyCopyright("")>
 <Assembly: AssemblyTrademark("")>
@@ -28,6 +28,6 @@ Imports System.Runtime.InteropServices
 ' You can specify all the values or you can default the Build and Revision Numbers
 ' by using the '*' as shown below:
 
-<Assembly:  AssemblyVersion("9.9.*")>
+<Assembly: AssemblyVersion("1.0.0.0")>
 
 
